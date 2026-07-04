@@ -1,6 +1,6 @@
 # dnabert2-clinvar-kfp-sequence-classify
 
-[![Open in JupyterLab](https://img.shields.io/badge/Open%20in-JupyterLab-F37626?logo=jupyter&logoColor=white)](http://localhost:8888/lab/tree/git-miramar-labs-org/projects/dnabert2-clinvar-kfp-sequence-classify/notebook.ipynb)  [![last run](https://img.shields.io/badge/last%20run-pending-lightgrey)](runs/RUNS.md)
+[![Open in JupyterLab](https://img.shields.io/badge/Open%20in-JupyterLab-F37626?logo=jupyter&logoColor=white)](http://localhost:8888/lab/tree/git-miramar-labs-org/projects/dnabert2-clinvar-kfp-sequence-classify/notebook.ipynb)  [![last run](https://img.shields.io/badge/last%20run-run--017%20PASS-brightgreen)](runs/RUNS.md)
 
 | | |
 |---|---|
