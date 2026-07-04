@@ -121,6 +121,23 @@ gh workflow run deploy-to-kfp.yaml --field run_name=run-001
 - GPU steps: `.set_gpu_limit(1).set_memory_limit("64G")` in the pipeline cell
 - Secret env vars (HF_TOKEN, etc.) are injected from the `mlabs-api-keys` K8s secret
 
+## Model construction pattern (all three eval/train components)
+
+Models are built via `AutoConfig.from_pretrained(...)` + `AutoModelForSequenceClassification
+.from_config(...)`, then the state dict is loaded manually — **not** a single
+`from_pretrained(..., num_labels=...)` call. This is required for DNABERT-2's bundled
+`trust_remote_code=True` custom code:
+- `bert_layers.py`'s `BertEmbeddings.__init__` reads `config.pad_token_id` directly, which
+  isn't in `config.json` — patched onto the loaded `AutoConfig` object (`= 3`) before
+  model construction
+- `bert_layers.py` imports `flash_attn_qkvpacked_func` from a vendored `flash_attn_triton.py`
+  that calls a Triton `trans_b` kwarg removed in the installed Triton version — the import
+  succeeds but the first forward pass crashes. After `from_config(...)`, the component scans
+  `sys.modules` for the loaded `bert_layers` module and sets `flash_attn_qkvpacked_func = None`
+  so it falls back to standard PyTorch attention
+
+See `WORKBOOK.md` §5 for the full run-by-run debugging history (run-001 through run-017).
+
 ## Compile check
 
 ```sh

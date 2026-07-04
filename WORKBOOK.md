@@ -58,9 +58,7 @@ model:
 dataset:
   id: wanglab/variant_effect_coding
   loader_key: variant_effect_coding  # must match a key in processors.py LOADERS
-  split_strategy: chromosome         # chromosome = held-out chr for test
-  test_chromosome: chr22
-  val_chromosome: chr21
+  split_strategy: random             # this dataset has no chromosome field — use random
 
 training:
   batch_size: 32
@@ -155,3 +153,37 @@ The deployment gate checks **both**:
 ## 5. Implementation Notes — run history
 
 <!-- Filled in after each run by the developer -->
+
+**Dataset schema mismatch (run-002):** the model card for `wanglab/variant_effect_coding`
+describes `{sequence, label, chrom}`, but the actual HF rows are
+`{ID, question, answer, reference_sequence, variant_sequence}` with no chromosome field.
+`processors.py` derives `label` from the `answer` text (`"Benign"` → 0, `"Pathogenic; ..."` → 1)
+and uses `variant_sequence` (a 200bp window around the variant) as the input sequence.
+`split_strategy` was switched from `chromosome` to `random` for this reason — always check
+`load_dataset(...).features` before writing a processor instead of trusting the dataset card.
+
+**DNABERT-2 config incompatibility (run-002):** the custom `BertEmbeddings.__init__` in
+DNABERT-2's bundled `bert_layers.py` accesses `config.pad_token_id` directly, which isn't
+present in the model's `config.json`. Fix: load the config first, set `pad_token_id = 3` if
+missing, before constructing the model.
+
+**PyTorch/transformers version mismatch (run-001):** `nvcr.io/nvidia/pytorch:24.12-py3` ships
+PyTorch 2.5.x; `transformers>=4.40` resolves to 4.47+, which requires
+`TransformGetItemToIndex` (added in PyTorch 2.6). Fixed by bumping the base image to
+`nvcr.io/nvidia/pytorch:26.04-py3` across all three GPU components.
+
+**Bundled flash-attention Triton incompatibility (run-015/016/017):** DNABERT-2's
+`bert_layers.py` imports `flash_attn_qkvpacked_func` from a vendored `flash_attn_triton.py`
+that calls a Triton `trans_b` kwarg removed in installed Triton v2+. Import succeeds; the
+crash only happens on first forward pass (`dot() got an unexpected keyword argument 'trans_b'`).
+Setting `sys.modules['flash_attn'] = None` (run-016) does not help — DNABERT-2 doesn't import
+through that path. The fix that worked (run-017): after `AutoModelForSequenceClassification
+.from_config(...)`, scan `sys.modules` for the loaded `bert_layers` module and set its
+`flash_attn_qkvpacked_func` attribute to `None`. The module checks this global at runtime and
+falls back to standard PyTorch attention. Applied identically in `baseline_eval`, `fine_tune`,
+and `post_finetune_eval`, and mirrored in the platform template
+(`templates/new-project-sequence-classify/`).
+
+**Result — run-017 PASS:** baseline accuracy 0.5980 / AUC 0.5009 → post-FT accuracy 0.8364 /
+AUC 0.9136 (Δaccuracy +0.2384). Deployment gate passed (AUC threshold 0.70). Full per-run
+detail in `runs/run-001.md` through `runs/run-017.md` and their `-commentary.md` companions.
